@@ -67,10 +67,7 @@ function startMCPServer() {
     return await deployRender(dir);
   });
 
-  server.tool('deploy.heroku', async ({ sessionId }) => {
-    const dir = path.join(PROJECTS_ROOT, sessionId);
-    return await deployHeroku(dir);
-  });
+  // 🚨 Heroku removed entirely
 
   server.listen(3001);
   console.log('🚀 MCP server running on http://localhost:3001');
@@ -120,8 +117,8 @@ ipcMain.handle('askClaude', async (_, prompt) => {
       { name: "run.command", description: "Run a shell command", input_schema: { type: "object", properties: { command: { type: "string" } }, required: ["command"] } },
       { name: "deploy.netlify", description: "Deploy project to Netlify", input_schema: { type: "object", properties: { sessionId: { type: "string" } } } },
       { name: "deploy.vercel", description: "Deploy project to Vercel", input_schema: { type: "object", properties: { sessionId: { type: "string" } } } },
-      { name: "deploy.render", description: "Deploy project to Render", input_schema: { type: "object", properties: { sessionId: { type: "string" } } } },
-      { name: "deploy.heroku", description: "Deploy project to Heroku", input_schema: { type: "object", properties: { sessionId: { type: "string" } } } }
+      { name: "deploy.render", description: "Deploy project to Render", input_schema: { type: "object", properties: { sessionId: { type: "string" } } } }
+      // 🚨 Heroku tool removed
     ]
   });
 
@@ -237,45 +234,12 @@ async function deployRender(dir) {
   return { success: true, url: artifact.serviceUrl };
 }
 
-// 🌐 Heroku Deploy
-async function deployHeroku(dir) {
-  const token = process.env.HEROKU_API_KEY;
-  if (!token) throw new Error('HEROKU_API_KEY missing in .env');
-
-  const zip = await zipFolder(dir);
-
-  // 1️⃣ Create new Heroku app
-  const { data: app } = await axios.post(
-    'https://api.heroku.com/apps',
-    { name: `vibelycoder-${Date.now()}` },
-    { headers: { Authorization: `Bearer ${token}`, Accept: 'application/vnd.heroku+json; version=3' } }
-  );
-
-  // 2️⃣ Upload source blob
-  const { data: source } = await axios.post(
-    `https://api.heroku.com/apps/${app.name}/sources`,
-    {},
-    { headers: { Authorization: `Bearer ${token}`, Accept: 'application/vnd.heroku+json; version=3' } }
-  );
-
-  await axios.put(source.source_blob.put_url, fs.createReadStream(zip), {
-    headers: { 'Content-Type': 'application/octet-stream' }
-  });
-
-  // 3️⃣ Trigger build
-  await axios.post(
-    `https://api.heroku.com/apps/${app.name}/builds`,
-    { source_blob: { url: source.source_blob.get_url } },
-    { headers: { Authorization: `Bearer ${token}`, Accept: 'application/vnd.heroku+json; version=3' } }
-  );
-
-  return { success: true, url: `https://${app.name}.herokuapp.com` };
-}
+// 🚨 Heroku Deploy removed completely
 
 // === DEPLOY HANDLER ===
 ipcMain.handle('deployTo', async (_, plat) => {
   try {
-    const handlers = { netlify: deployNetlify, vercel: deployVercel, render: deployRender, heroku: deployHeroku };
+    const handlers = { netlify: deployNetlify, vercel: deployVercel, render: deployRender };
     return await handlers[plat](path.join(PROJECTS_ROOT, arguments[1] || ""));
   } catch (e) {
     return { success: false, message: e.toString() };
