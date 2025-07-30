@@ -22,3 +22,4 @@ contextBridge.exposeInMainWorld('api', {
   // 🔑 Verify Gumroad license
   verifyLicense: (key) => ipcRenderer.invoke('verify-license', key),
 });
+
