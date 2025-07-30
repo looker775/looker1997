@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Activate VibelyCoder</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background-color: #f5f7fa;
+      margin: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+    }
+    h1 { color: #333; }
+    input {
+      padding: 10px;
+      width: 300px;
+      margin-bottom: 15px;
+      font-size: 16px;
+    }
+    button {
+      background-color: #4CAF50;
+      color: white;
+      padding: 10px 20px;
+      border: none;
+      cursor: pointer;
+      font-size: 16px;
+      border-radius: 5px;
+    }
+    #status {
+      margin-top: 15px;
+      font-size: 14px;
+      color: red;
+    }
+  </style>
+</head>
+<body>
+  <h1>Activate VibelyCoder</h1>
+  <input type="text" id="licenseKey" placeholder="Enter your Gumroad license key">
+  <button onclick="activate()">Activate</button>
+  <div id="status"></div>
+
+  <script>
+    const { ipcRenderer } = require('electron');
+
+    async function activate() {
+      const key = document.getElementById('licenseKey').value;
+      document.getElementById('status').innerText = "Checking license...";
+
+      const response = await ipcRenderer.invoke('check-license', key);
+
+      if (response.success) {
+        document.getElementById('status').style.color = "green";
+        document.getElementById('status').innerText = "✅ License valid! Opening app...";
+        setTimeout(() => {
+          ipcRenderer.send('license-success'); // tell main process to open main app
+        }, 1000);
+      } else {
+        document.getElementById('status').style.color = "red";
+        document.getElementById('status').innerText = "❌ " + response.message;
+      }
+    }
+  </script>
+</body>
+</html>

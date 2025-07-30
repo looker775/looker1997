@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>VibelyCoder</title>
+  <style>
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      display: flex;
+      height: 100vh;
+    }
+    #license-screen, #app-screen {
+      width: 100%;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+    }
+    #app-screen {
+      display: none;
+      flex-direction: row;
+    }
+    #left, #middle, #right {
+      padding: 10px;
+      overflow: auto;
+    }
+    #left {
+      width: 25%;
+      background: #f4f4f4;
+      border-right: 1px solid #ddd;
+    }
+    #middle {
+      width: 50%;
+      background: #fff;
+      border-right: 1px solid #ddd;
+    }
+    #right {
+      width: 25%;
+      background: #fafafa;
+    }
+    h2 { margin-top: 0; }
+    #toolbox button { margin: 3px; }
+    .draggable {
+      padding: 5px;
+      margin: 3px;
+      background: #ddd;
+      cursor: grab;
+    }
+    .canvas-item {
+      border: 1px dashed #aaa;
+      padding: 5px;
+      margin: 5px;
+      position: relative;
+    }
+    .edit-btn, .delete-btn {
+      position: absolute;
+      top: -8px;
+      right: -8px;
+      background: red;
+      color: #fff;
+      font-size: 10px;
+      border: none;
+      border-radius: 50%;
+      width: 18px;
+      height: 18px;
+      cursor: pointer;
+    }
+    .edit-btn {
+      right: 15px;
+      background: blue;
+    }
+    #deploy-panel {
+      margin-top: 15px;
+      padding: 10px;
+      border-top: 1px solid #ccc;
+      background: #eee;
+    }
+    #deploy-panel button {
+      display: block;
+      width: 100%;
+      margin: 5px 0;
+      padding: 8px;
+      font-weight: bold;
+    }
+    #deploy-log {
+      font-size: 13px;
+      margin-top: 8px;
+      color: #333;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- 🔑 License Screen -->
+  <div id="license-screen">
+    <h2>🔑 Enter Your VibelyCoder License Key</h2>
+    <input id="licenseKey" type="text" placeholder="Paste your license key here" style="width:300px; padding:10px;">
+    <button onclick="checkLicense()" style="margin-top:10px; padding:8px 16px;">Activate</button>
+    <p id="licenseStatus" style="margin-top:10px; font-weight:bold;"></p>
+  </div>
+
+  <!-- 🎨 App Screen -->
+  <div id="app-screen">
+    <div id="left">
+      <h2>VibelyCoder Panel</h2>
+      <textarea id="chatInput" style="width:100%; height:150px;" placeholder="Type instructions here..."></textarea>
+      <button onclick="sendMessage()">Send</button>
+      <div id="chatLog"></div>
+
+      <hr>
+      <h3>🎨 UI Builder</h3>
+      <div id="toolbox">
+        <div class="draggable" draggable="true" data-type="button">➕ Button</div>
+        <div class="draggable" draggable="true" data-type="input">📝 Input</div>
+        <div class="draggable" draggable="true" data-type="img">🖼️ Image</div>
+        <div class="draggable" draggable="true" data-type="text">📄 Text</div>
+      </div>
+
+      <button onclick="saveLayout()">💾 Save Layout</button>
+      <button onclick="loadLayout()">📂 Load Layout</button>
+      <button onclick="resetLayout()">❌ Reset Layout</button>
+      <hr>
+      <button onclick="exportLayout()">📤 Export Layout</button>
+      <button onclick="openInVSCode()">🖥️ Open in VS Code</button>
+      <button onclick="buildInstaller()">📦 Build Installer</button>
+
+      <!-- 🚀 Deployment Panel -->
+      <div id="deploy-panel">
+        <h3>🚀 Deploy Your App</h3>
+        <p>Select where you want to deploy your project:</p>
+        <button onclick="deployApp('netlify')">🌐 Deploy to Netlify</button>
+        <button onclick="deployApp('vercel')">⚡ Deploy to Vercel</button>
+        <button onclick="deployApp('render')">☁️ Deploy to Render</button>
+        <button onclick="deployApp('heroku')">📦 Deploy to Heroku</button>
+        <div id="deploy-log"></div>
+      </div>
+    </div>
+
+    <div id="middle">
+      <h2>Project Log</h2>
+      <p>Status updates will appear here...</p>
+    </div>
+
+    <div id="right">
+      <h2>Live Preview</h2>
+      <div id="canvas" style="width:100%; height:90%; border:1px solid #ccc; background:#fff;" 
+        ondragover="event.preventDefault()" 
+        ondrop="dropElement(event)"></div>
+    </div>
+  </div>
+
+<script>
+  // ✅ License Activation
+  async function checkLicense() {
+    const key = document.getElementById('licenseKey').value;
+    const status = document.getElementById('licenseStatus');
+    status.textContent = "⏳ Checking license…";
+    
+    const result = await window.electronAPI.verifyLicense(key);
+
+    if (result.success) {
+      status.textContent = "✅ License Activated!";
+      setTimeout(() => {
+        document.getElementById('license-screen').style.display = 'none';
+        document.getElementById('app-screen').style.display = 'flex';
+      }, 1000);
+    } else {
+      status.textContent = result.message;
+    }
+  }
+
+  // ✅ ChatGPT Messages
+  async function sendMessage() {
+    const inputBox = document.getElementById('chatInput');
+    const log = document.getElementById('chatLog');
+    const userText = inputBox.value;
+    log.innerHTML += "<p><b>You:</b> " + userText + "</p>";
+    inputBox.value = '';
+    const reply = await window.electronAPI.askChatGPT(userText);
+    log.innerHTML += "<p><b>VibelyCoder:</b> " + reply + "</p>";
+  }
+
+  // ✅ UI Builder
+  document.querySelectorAll('.draggable').forEach(el => {
+    el.addEventListener('dragstart', e => {
+      e.dataTransfer.setData('type', e.target.dataset.type);
+    });
+  });
+
+  function dropElement(event) {
+    event.preventDefault();
+    const type = event.dataTransfer.getData('type');
+    const canvas = document.getElementById('canvas');
+
+    let el = document.createElement('div');
+    el.className = "canvas-item";
+
+    if (type === 'button') el.innerHTML = '<button>Click Me</button>';
+    if (type === 'input') el.innerHTML = '<input type="text" placeholder="Type here">';
+    if (type === 'img') el.innerHTML = '<img src="https://via.placeholder.com/100" style="max-width:100px;">';
+    if (type === 'text') el.innerHTML = '<p>Editable Text</p>';
+
+    // Add edit & delete buttons
+    const editBtn = document.createElement('button');
+    editBtn.innerText = "✎";
+    editBtn.className = "edit-btn";
+    editBtn.onclick = () => {
+      let newContent = prompt("Edit content:", el.innerHTML);
+      if (newContent) el.innerHTML = newContent;
+    };
+
+    const delBtn = document.createElement('button');
+    delBtn.innerText = "×";
+    delBtn.className = "delete-btn";
+    delBtn.onclick = () => el.remove();
+
+    el.appendChild(editBtn);
+    el.appendChild(delBtn);
+    canvas.appendChild(el);
+  }
+
+  function saveLayout() {
+    const layout = document.getElementById('canvas').innerHTML;
+    localStorage.setItem('savedLayout', layout);
+    alert("✅ Layout Saved!");
+  }
+
+  function loadLayout() {
+    const saved = localStorage.getItem('savedLayout');
+    if (saved) document.getElementById('canvas').innerHTML = saved;
+  }
+
+  function resetLayout() {
+    if (confirm("❌ Are you sure you want to clear the layout?")) {
+      document.getElementById('canvas').innerHTML = "";
+    }
+  }
+
+  // ✅ Export Layout as HTML
+  async function exportLayout() {
+    const layout = document.getElementById('canvas').innerHTML;
+    await window.electronAPI.exportLayout(layout);
+    alert("📤 Layout exported to /exported-ui/index.html");
+  }
+
+  // ✅ Open in VS Code
+  async function openInVSCode() {
+    await window.electronAPI.openInVSCode();
+  }
+
+  // ✅ Build Installer
+  async function buildInstaller() {
+    alert("📦 Building installer… this might take a while.");
+    await window.electronAPI.buildInstaller();
+    alert("✅ Installer build complete!");
+  }
+
+  // ✅ Deployment Function
+  async function deployApp(platform) {
+    document.getElementById("deploy-log").innerHTML = "🚀 Deploying to " + platform + "...";
+
+    const result = await window.electronAPI.deployTo(platform);
+
+    if (result.success) {
+      document.getElementById("deploy-log").innerHTML = 
+        "✅ Deployed successfully to " + platform + "!<br>🔗 <a href='" + result.url + "' target='_blank'>View your live app</a>";
+    } else {
+      document.getElementById("deploy-log").innerHTML = "❌ Error: " + result.message;
+    }
+  }
+</script>
+</body>
+</html>
