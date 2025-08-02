@@ -8,8 +8,33 @@
       margin: 0;
       font-family: Arial, sans-serif;
       display: flex;
+      flex-direction: column;
       height: 100vh;
     }
+
+    /* 🔝 Top Toolbar */
+    #toolbar {
+      background: #222;
+      color: #fff;
+      padding: 10px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    #toolbar button {
+      background: #444;
+      color: #fff;
+      border: none;
+      padding: 8px 12px;
+      margin-left: 5px;
+      cursor: pointer;
+      border-radius: 4px;
+    }
+    #toolbar button:hover {
+      background: #666;
+    }
+
+    /* Screens */
     #license-screen, #app-screen {
       width: 100%;
       height: 100%;
@@ -20,7 +45,14 @@
     }
     #app-screen {
       display: none;
-      flex-direction: row;
+      flex-direction: column;
+      flex: 1;
+    }
+
+    /* Main App Layout */
+    #content {
+      flex: 1;
+      display: flex;
     }
     #left, #middle, #right {
       padding: 10px;
@@ -41,6 +73,8 @@
       background: #fafafa;
     }
     h2 { margin-top: 0; }
+
+    /* Drag & Drop UI Builder */
     #toolbox button { margin: 3px; }
     .draggable {
       padding: 5px;
@@ -71,6 +105,8 @@
       right: 15px;
       background: blue;
     }
+
+    /* Deployment Panel */
     #deploy-panel {
       margin-top: 15px;
       padding: 10px;
@@ -89,9 +125,37 @@
       margin-top: 8px;
       color: #333;
     }
+
+    /* CLI Panel */
+    #cli-panel {
+      display: none;
+      background: #1e1e1e;
+      color: #00ff00;
+      font-family: monospace;
+      height: 200px;
+      overflow-y: auto;
+      padding: 10px;
+      border-top: 2px solid #444;
+    }
+    #cli-input {
+      width: 98%;
+      padding: 5px;
+      background: #000;
+      color: #0f0;
+      border: 1px solid #444;
+      margin-top: 5px;
+    }
   </style>
 </head>
 <body>
+
+  <!-- 🔝 Toolbar -->
+  <div id="toolbar">
+    <div>🚀 VibelyCoder</div>
+    <div>
+      <button onclick="toggleCLI()">🖥️ Terminal</button>
+    </div>
+  </div>
 
   <!-- 🔑 License Screen -->
   <div id="license-screen">
@@ -103,51 +167,58 @@
 
   <!-- 🎨 App Screen -->
   <div id="app-screen">
-    <div id="left">
-      <h2>VibelyCoder Panel</h2>
-      <textarea id="chatInput" style="width:100%; height:150px;" placeholder="Type instructions here..."></textarea>
-      <button onclick="sendMessage()">Send</button>
-      <div id="chatLog"></div>
+    <div id="content">
+      <div id="left">
+        <h2>VibelyCoder Panel</h2>
+        <textarea id="chatInput" style="width:100%; height:150px;" placeholder="Type instructions here..."></textarea>
+        <button onclick="sendMessage()">Send</button>
+        <div id="chatLog"></div>
 
-      <hr>
-      <h3>🎨 UI Builder</h3>
-      <div id="toolbox">
-        <div class="draggable" draggable="true" data-type="button">➕ Button</div>
-        <div class="draggable" draggable="true" data-type="input">📝 Input</div>
-        <div class="draggable" draggable="true" data-type="img">🖼️ Image</div>
-        <div class="draggable" draggable="true" data-type="text">📄 Text</div>
+        <hr>
+        <h3>🎨 UI Builder</h3>
+        <div id="toolbox">
+          <div class="draggable" draggable="true" data-type="button">➕ Button</div>
+          <div class="draggable" draggable="true" data-type="input">📝 Input</div>
+          <div class="draggable" draggable="true" data-type="img">🖼️ Image</div>
+          <div class="draggable" draggable="true" data-type="text">📄 Text</div>
+        </div>
+
+        <button onclick="saveLayout()">💾 Save Layout</button>
+        <button onclick="loadLayout()">📂 Load Layout</button>
+        <button onclick="resetLayout()">❌ Reset Layout</button>
+        <hr>
+        <button onclick="exportLayout()">📤 Export Layout</button>
+        <button onclick="openInVSCode()">🖥️ Open in VS Code</button>
+        <button onclick="buildInstaller()">📦 Build Installer</button>
+
+        <!-- 🚀 Deployment Panel -->
+        <div id="deploy-panel">
+          <h3>🚀 Deploy Your App</h3>
+          <p>Select where you want to deploy your project:</p>
+          <button onclick="deployApp('netlify')">🌐 Deploy to Netlify</button>
+          <button onclick="deployApp('vercel')">⚡ Deploy to Vercel</button>
+          <button onclick="deployApp('render')">☁️ Deploy to Render</button>
+          <div id="deploy-log"></div>
+        </div>
       </div>
 
-      <button onclick="saveLayout()">💾 Save Layout</button>
-      <button onclick="loadLayout()">📂 Load Layout</button>
-      <button onclick="resetLayout()">❌ Reset Layout</button>
-      <hr>
-      <button onclick="exportLayout()">📤 Export Layout</button>
-      <button onclick="openInVSCode()">🖥️ Open in VS Code</button>
-      <button onclick="buildInstaller()">📦 Build Installer</button>
+      <div id="middle">
+        <h2>Project Log</h2>
+        <p>Status updates will appear here...</p>
+      </div>
 
-      <!-- 🚀 Deployment Panel -->
-      <div id="deploy-panel">
-        <h3>🚀 Deploy Your App</h3>
-        <p>Select where you want to deploy your project:</p>
-        <button onclick="deployApp('netlify')">🌐 Deploy to Netlify</button>
-        <button onclick="deployApp('vercel')">⚡ Deploy to Vercel</button>
-        <button onclick="deployApp('render')">☁️ Deploy to Render</button>
-        <!-- ✅ Heroku button fully removed -->
-        <div id="deploy-log"></div>
+      <div id="right">
+        <h2>Live Preview</h2>
+        <div id="canvas" style="width:100%; height:90%; border:1px solid #ccc; background:#fff;" 
+          ondragover="event.preventDefault()" 
+          ondrop="dropElement(event)"></div>
       </div>
     </div>
 
-    <div id="middle">
-      <h2>Project Log</h2>
-      <p>Status updates will appear here...</p>
-    </div>
-
-    <div id="right">
-      <h2>Live Preview</h2>
-      <div id="canvas" style="width:100%; height:90%; border:1px solid #ccc; background:#fff;" 
-        ondragover="event.preventDefault()" 
-        ondrop="dropElement(event)"></div>
+    <!-- 🖥️ CLI Panel -->
+    <div id="cli-panel">
+      <div id="cli-output"></div>
+      <input id="cli-input" type="text" placeholder="Type CLI command here..." onkeydown="handleCLIEnter(event)">
     </div>
   </div>
 
@@ -158,7 +229,7 @@
     const status = document.getElementById('licenseStatus');
     status.textContent = "⏳ Checking license…";
     
-    const result = await window.electronAPI.verifyLicense(key);
+    const result = await window.vibelyAPI.verifyLicense(key);
 
     if (result.success) {
       status.textContent = "✅ License Activated!";
@@ -171,18 +242,20 @@
     }
   }
 
-  // ✅ ChatGPT Messages
+  // ✅ Chat Messages — Claude API Only
   async function sendMessage() {
     const inputBox = document.getElementById('chatInput');
     const log = document.getElementById('chatLog');
     const userText = inputBox.value;
     log.innerHTML += "<p><b>You:</b> " + userText + "</p>";
     inputBox.value = '';
-    const reply = await window.electronAPI.askChatGPT(userText);
-    log.innerHTML += "<p><b>VibelyCoder:</b> " + reply + "</p>";
+
+    // 🔥 Call CLAUDE via preload.js
+    const reply = await window.vibelyAPI.askClaude(userText);
+    log.innerHTML += "<p><b>Claude:</b> " + reply + "</p>";
   }
 
-  // ✅ UI Builder
+  // ✅ Drag & Drop UI Builder
   document.querySelectorAll('.draggable').forEach(el => {
     el.addEventListener('dragstart', e => {
       e.dataTransfer.setData('type', e.target.dataset.type);
@@ -202,7 +275,7 @@
     if (type === 'img') el.innerHTML = '<img src="https://via.placeholder.com/100" style="max-width:100px;">';
     if (type === 'text') el.innerHTML = '<p>Editable Text</p>';
 
-    // Add edit & delete buttons
+    // Edit & Delete Buttons
     const editBtn = document.createElement('button');
     editBtn.innerText = "✎";
     editBtn.className = "edit-btn";
@@ -241,27 +314,23 @@
   // ✅ Export Layout as HTML
   async function exportLayout() {
     const layout = document.getElementById('canvas').innerHTML;
-    await window.electronAPI.exportLayout(layout);
+    await window.vibelyAPI.exportLayout(layout);
     alert("📤 Layout exported to /exported-ui/index.html");
   }
 
-  // ✅ Open in VS Code
   async function openInVSCode() {
-    await window.electronAPI.openInVSCode();
+    await window.vibelyAPI.openInVSCode();
   }
 
-  // ✅ Build Installer
   async function buildInstaller() {
     alert("📦 Building installer… this might take a while.");
-    await window.electronAPI.buildInstaller();
+    await window.vibelyAPI.buildInstaller();
     alert("✅ Installer build complete!");
   }
 
-  // ✅ Deployment Function
   async function deployApp(platform) {
     document.getElementById("deploy-log").innerHTML = "🚀 Deploying to " + platform + "...";
-
-    const result = await window.electronAPI.deployTo(platform);
+    const result = await window.vibelyAPI.deployTo(platform);
 
     if (result.success) {
       document.getElementById("deploy-log").innerHTML = 
@@ -270,6 +339,35 @@
       document.getElementById("deploy-log").innerHTML = "❌ Error: " + result.message;
     }
   }
+
+  // ✅ CLI PANEL FUNCTIONS
+  async function toggleCLI() {
+    const cliPanel = document.getElementById('cli-panel');
+    if (cliPanel.style.display === 'none') {
+      cliPanel.style.display = 'block';
+      await window.vibelyAPI.openCLI();
+    } else {
+      cliPanel.style.display = 'none';
+    }
+  }
+
+  function handleCLIEnter(event) {
+    if (event.key === 'Enter') {
+      const cmdInput = document.getElementById('cli-input');
+      const cmd = cmdInput.value;
+      cmdInput.value = '';
+      window.vibelyAPI.sendCLICommand(cmd);
+    }
+  }
+
+  // ✅ CLI Output listener
+  window.vibelyAPI.onCLIOutput((data) => {
+    const cliOut = document.getElementById('cli-output');
+    cliOut.innerHTML += data + "<br>";
+    cliOut.scrollTop = cliOut.scrollHeight;
+  });
 </script>
 </body>
 </html>
+
+
