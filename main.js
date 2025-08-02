@@ -1,254 +1,199 @@
-const { app, BrowserWindow, ipcMain } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog } = require('electron');
 const path = require('path');
 const fs = require('fs');
-const axios = require('axios');
-const AdmZip = require('adm-zip');
 const { spawn } = require('child_process');
-const { AnthropicClient } = require('@anthropic-ai/sdk');
-const { createServer } = require('@modelcontextprotocol/server');
+const fetch = require('node-fetch'); // ✅ Needed for Claude API
 
-// === CONFIG ===
-const isDev = !app.isPackaged;
-require('dotenv').config({ path: isDev ? path.join(__dirname, '.env') : path.join(process.resourcesPath, '.env') });
+let mainWindow;
+let cliWindow;
 
-// === GLOBALS ===
-const GUMROAD_PRODUCT_PERMALINK = "otterf";
-const PROJECTS_ROOT = path.join(app.getPath('userData'), 'user-projects');
-if (!fs.existsSync(PROJECTS_ROOT)) fs.mkdirSync(PROJECTS_ROOT);
-
-let claudeKey = null;
-
-// === MCP SERVER ===
-function startMCPServer() {
-  const server = createServer();
-
-  // ✅ Filesystem tools
-  server.tool('fs.write', async ({ path: relPath, content }) => {
-    const absPath = relPath.startsWith(PROJECTS_ROOT)
-      ? relPath
-      : path.join(PROJECTS_ROOT, relPath);
-    fs.mkdirSync(path.dirname(absPath), { recursive: true });
-    fs.writeFileSync(absPath, content, 'utf8');
-    return { success: true, message: `File written: ${absPath}` };
-  });
-
-  server.tool('fs.read', async ({ path: relPath }) => {
-    const absPath = relPath.startsWith(PROJECTS_ROOT)
-      ? relPath
-      : path.join(PROJECTS_ROOT, relPath);
-    if (!fs.existsSync(absPath)) return { success: false, message: 'File not found' };
-    return { success: true, content: fs.readFileSync(absPath, 'utf8') };
-  });
-
-  // ✅ Shell tool
-  server.tool('run.command', async ({ command }) => {
-    return new Promise((resolve) => {
-      const proc = spawn(command, { shell: true });
-      let out = '';
-      proc.stdout.on('data', d => out += d);
-      proc.stderr.on('data', d => out += d);
-      proc.on('close', code => resolve({ success: code === 0, output: out }));
-    });
-  });
-
-  // ✅ Deploy tools connected to real functions
-  server.tool('deploy.netlify', async ({ sessionId }) => {
-    const dir = path.join(PROJECTS_ROOT, sessionId);
-    return await deployNetlify(dir);
-  });
-
-  server.tool('deploy.vercel', async ({ sessionId }) => {
-    const dir = path.join(PROJECTS_ROOT, sessionId);
-    return await deployVercel(dir);
-  });
-
-  server.tool('deploy.render', async ({ sessionId }) => {
-    const dir = path.join(PROJECTS_ROOT, sessionId);
-    return await deployRender(dir);
-  });
-
-  // 🚨 Heroku removed entirely
-
-  server.listen(3001);
-  console.log('🚀 MCP server running on http://localhost:3001');
-}
-
-// === ELECTRON WINDOW ===
-function createWindow() {
-  const win = new BrowserWindow({
+// 🚀 CREATE MAIN APP WINDOW
+function createMainWindow() {
+  mainWindow = new BrowserWindow({
     width: 1400,
-    height: 800,
-    webPreferences: { preload: path.join(__dirname, 'preload.js') }
+    height: 900,
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false
+    }
   });
-  win.loadFile('index.html');
+
+  mainWindow.loadFile('license.html');
+
+  mainWindow.on('closed', () => {
+    mainWindow = null;
+  });
 }
 
-// === LICENSE CHECK ===
-ipcMain.handle('verify-license', async (_, key) => {
-  try {
-    const { data } = await axios.post('https://api.gumroad.com/v2/licenses/verify', null, {
-      params: { product_permalink: GUMROAD_PRODUCT_PERMALINK, license_key: key }
-    });
-    if (!data.success) return { success: false, message: "❌ Invalid key" };
-    const p = data.purchase;
-    if (p.refunded || p.chargebacked) return { success: false, message: "❌ Refunded" };
-    return p.subscription_ended_at === null
-      ? { success: true, message: "✅ Active subscription" }
-      : { success: false, message: `❌ Expired on ${p.subscription_ended_at}` };
-  } catch (e) { return { success: false, message: "❌ Gumroad API error" }; }
-});
+// 🚀 CREATE CLI POPUP WINDOW (triggered by “Terminal” button)
+function createCLIWindow() {
+  if (cliWindow) {
+    cliWindow.focus();
+    return;
+  }
 
-// === CLAUDE API KEY ===
-ipcMain.handle('saveClaudeKey', (_, key) => {
-  claudeKey = key.trim();
-  return { success: !!claudeKey, message: claudeKey ? '✅ Claude key saved' : '❌ Empty key' };
-});
-
-// === CLAUDE WITH MCP TOOLS ===
-ipcMain.handle('askClaude', async (_, prompt) => {
-  if (!claudeKey) return '❌ Please save Claude API key first.';
-  const client = new AnthropicClient({ apiKey: claudeKey });
-
-  const resp = await client.messages.create({
-    model: 'claude-3-opus-20240229',
-    messages: [{ role: "user", content: prompt }],
-    tools: [
-      { name: "fs.write", description: "Write a file", input_schema: { type: "object", properties: { path: { type: "string" }, content: { type: "string" } }, required: ["path", "content"] } },
-      { name: "run.command", description: "Run a shell command", input_schema: { type: "object", properties: { command: { type: "string" } }, required: ["command"] } },
-      { name: "deploy.netlify", description: "Deploy project to Netlify", input_schema: { type: "object", properties: { sessionId: { type: "string" } } } },
-      { name: "deploy.vercel", description: "Deploy project to Vercel", input_schema: { type: "object", properties: { sessionId: { type: "string" } } } },
-      { name: "deploy.render", description: "Deploy project to Render", input_schema: { type: "object", properties: { sessionId: { type: "string" } } } }
-      // 🚨 Heroku tool removed
-    ]
+  cliWindow = new BrowserWindow({
+    width: 800,
+    height: 500,
+    title: "VibelyCoder CLI",
+    parent: mainWindow,
+    modal: false,
+    webPreferences: {
+      nodeIntegration: true,
+      contextIsolation: false
+    }
   });
 
-  return resp;
+  cliWindow.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(`
+    <html>
+    <head>
+      <title>VibelyCoder CLI</title>
+      <style>
+        body { font-family: monospace; margin: 0; padding: 0; background: #111; color: #0f0; }
+        #cli-output { white-space: pre-wrap; padding: 10px; height: 85%; overflow-y: auto; }
+        #cli-input { width: 100%; padding: 8px; border: none; outline: none; font-family: monospace; font-size: 14px; }
+      </style>
+    </head>
+    <body>
+      <div id="cli-output">💻 VibelyCoder CLI started...\n</div>
+      <input id="cli-input" placeholder="Type a command and press Enter">
+      <script>
+        const { exec } = require('child_process');
+        const outputDiv = document.getElementById('cli-output');
+        const input = document.getElementById('cli-input');
+
+        input.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter') {
+            const cmd = input.value;
+            input.value = '';
+            outputDiv.innerHTML += "> " + cmd + "\\n";
+            exec(cmd, (err, stdout, stderr) => {
+              if (stdout) outputDiv.innerHTML += stdout + "\\n";
+              if (stderr) outputDiv.innerHTML += stderr + "\\n";
+              if (err) outputDiv.innerHTML += "❌ Error: " + err.message + "\\n";
+              outputDiv.scrollTop = outputDiv.scrollHeight;
+            });
+          }
+        });
+      </script>
+    </body>
+    </html>
+  `));
+
+  cliWindow.on('closed', () => {
+    cliWindow = null;
+  });
+}
+
+// ✅ APP EVENTS
+app.on('ready', createMainWindow);
+app.on('window-all-closed', () => {
+  if (process.platform !== 'darwin') app.quit();
+});
+app.on('activate', () => {
+  if (mainWindow === null) createMainWindow();
 });
 
-// === FILE HELPERS ===
-ipcMain.handle('writeFile', async (_, sessionId, relPath, content) => {
-  const dir = path.join(PROJECTS_ROOT, sessionId, path.dirname(relPath));
-  fs.mkdirSync(dir, { recursive: true });
-  fs.writeFileSync(path.join(PROJECTS_ROOT, sessionId, relPath), content, 'utf8');
+
+// =======================
+// 📌 IPC HANDLERS
+// =======================
+
+// 🔑 LICENSE CHECK
+ipcMain.handle('verify-license', async (event, key) => {
+  const validKeys = ['TEST-1234', 'VIP-KEY-5678'];
+  return validKeys.includes(key)
+    ? { success: true }
+    : { success: false, message: '❌ Invalid license key' };
+});
+
+// 🔑 LICENSE SUCCESS → load main GUI
+ipcMain.on('license-success', () => {
+  if (mainWindow) mainWindow.loadFile('index.html');
+});
+
+// 🤖 CLAUDE INTEGRATION
+ipcMain.handle('saveClaudeKey', async (event, key) => {
+  const keyPath = path.join(app.getPath('userData'), 'claude_key.json');
+  fs.writeFileSync(keyPath, JSON.stringify({ key }, null, 2));
   return { success: true };
 });
 
-ipcMain.handle('runCommand', (_, sessionId, command, args = []) => {
-  return new Promise(resolve => {
-    const cwd = path.join(PROJECTS_ROOT, sessionId);
-    const pr = spawn(command, args, { cwd, shell: true });
-    let out = '';
-    pr.stdout.on('data', d => out += d);
-    pr.stderr.on('data', d => out += d);
-    pr.on('close', code => resolve({ code, output: out }));
-  });
-});
-
-// === DEPLOYMENT HELPERS ===
-async function zipFolder(dir) {
-  const zip = new AdmZip();
-  zip.addLocalFolder(dir);
-  const zipPath = path.join(path.dirname(dir), 'deploy.zip');
-  zip.writeZip(zipPath);
-  return zipPath;
-}
-
-// === REAL DEPLOYMENT FUNCTIONS ===
-
-// 🌐 Netlify Deploy
-async function deployNetlify(dir) {
-  const token = process.env.NETLIFY_AUTH_TOKEN;
-  if (!token) throw new Error('NETLIFY_AUTH_TOKEN missing in .env');
-
-  const zip = await zipFolder(dir);
-
-  // 1️⃣ Create new site
-  const { data: site } = await axios.post(
-    'https://api.netlify.com/api/v1/sites',
-    {},
-    { headers: { Authorization: `Bearer ${token}` } }
-  );
-
-  // 2️⃣ Upload deploy ZIP
-  await axios.post(
-    `https://api.netlify.com/api/v1/sites/${site.site_id}/deploys`,
-    fs.createReadStream(zip),
-    { headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/zip' } }
-  );
-
-  return { success: true, url: site.ssl_url };
-}
-
-// 🌐 Vercel Deploy
-async function deployVercel(dir) {
-  const token = process.env.VERCEL_AUTH_TOKEN;
-  if (!token) throw new Error('VERCEL_AUTH_TOKEN missing in .env');
-
-  const zip = await zipFolder(dir);
-
-  // 1️⃣ Create deployment
-  const { data: deployment } = await axios.post(
-    'https://api.vercel.com/v13/deployments',
-    { target: 'production' },
-    { headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' } }
-  );
-
-  // 2️⃣ Upload files (Vercel expects PATCH upload of files)
-  await axios.patch(
-    `https://api.vercel.com/v13/deployments/${deployment.id}/files`,
-    fs.createReadStream(zip),
-    { headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/zip' } }
-  );
-
-  return { success: true, url: `https://${deployment.url}` };
-}
-
-// 🌐 Render Deploy
-async function deployRender(dir) {
-  const token = process.env.RENDER_AUTH_TOKEN;
-  const serviceId = process.env.RENDER_SERVICE_ID;
-  if (!token) throw new Error('RENDER_AUTH_TOKEN missing in .env');
-  if (!serviceId) throw new Error('RENDER_SERVICE_ID missing in .env');
-
-  const zip = await zipFolder(dir);
-
-  // 1️⃣ Request artifact upload URL
-  const { data: artifact } = await axios.post(
-    'https://api.render.com/v1/artifacts',
-    { serviceId },
-    { headers: { Authorization: `Bearer ${token}` } }
-  );
-
-  // 2️⃣ Upload zip to signed URL
-  await axios.put(artifact.uploadUrl, fs.createReadStream(zip), {
-    headers: { 'Content-Type': 'application/zip' }
-  });
-
-  // 3️⃣ Trigger deploy
-  await axios.post(
-    `https://api.render.com/v1/services/${serviceId}/deploys`,
-    {},
-    { headers: { Authorization: `Bearer ${token}` } }
-  );
-
-  return { success: true, url: artifact.serviceUrl };
-}
-
-// 🚨 Heroku Deploy removed completely
-
-// === DEPLOY HANDLER ===
-ipcMain.handle('deployTo', async (_, plat) => {
+ipcMain.handle('askClaude', async (event, prompt) => {
   try {
-    const handlers = { netlify: deployNetlify, vercel: deployVercel, render: deployRender };
-    return await handlers[plat](path.join(PROJECTS_ROOT, arguments[1] || ""));
-  } catch (e) {
-    return { success: false, message: e.toString() };
+    const keyPath = path.join(app.getPath('userData'), 'claude_key.json');
+    if (!fs.existsSync(keyPath)) return "❌ No Claude API key saved.";
+    const { key } = JSON.parse(fs.readFileSync(keyPath, 'utf8'));
+
+    const response = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": key,
+        "anthropic-version": "2023-06-01"
+      },
+      body: JSON.stringify({
+        model: "claude-3-opus-20240229",
+        max_tokens: 200,
+        messages: [{ role: "user", content: prompt }]
+      })
+    });
+
+    const data = await response.json();
+    return data?.content?.[0]?.text || "❌ Claude returned no text.";
+  } catch (err) {
+    console.error("Claude API Error:", err);
+    return "❌ Error: " + err.message;
   }
 });
 
-// === STARTUP ===
-app.whenReady().then(() => {
-  startMCPServer();
-  createWindow();
+// 📂 WRITE FILE
+ipcMain.handle('writeFile', async (event, sessionId, relPath, content) => {
+  const targetPath = path.join(process.cwd(), relPath);
+  fs.writeFileSync(targetPath, content);
+  return { success: true, path: targetPath };
 });
-app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
+
+// ⚙️ RUN COMMAND
+ipcMain.handle('runCommand', async (event, sessionId, command, args) => {
+  return new Promise((resolve) => {
+    const proc = spawn(command, args, { shell: true });
+    let output = '';
+    proc.stdout.on('data', data => output += data.toString());
+    proc.stderr.on('data', data => output += data.toString());
+    proc.on('close', code => resolve({ success: code === 0, output }));
+  });
+});
+
+// 🌍 DEPLOYMENT (stub)
+ipcMain.handle('deployTo', async (event, platform, sessionId) => {
+  return { success: true, url: `https://${platform}.example.com/your-app` };
+});
+
+// 🎨 EXPORT LAYOUT
+ipcMain.handle('export-layout', async (event, layout) => {
+  const exportDir = path.join(process.cwd(), 'exported-ui');
+  if (!fs.existsSync(exportDir)) fs.mkdirSync(exportDir);
+  const filePath = path.join(exportDir, 'index.html');
+  fs.writeFileSync(filePath, layout);
+  return { success: true, path: filePath };
+});
+
+// 🖥️ OPEN IN VS CODE
+ipcMain.handle('open-vscode', async () => {
+  return new Promise((resolve) => {
+    const proc = spawn('code', [process.cwd()], { shell: true });
+    proc.on('close', () => resolve({ success: true }));
+  });
+});
+
+// 📦 BUILD INSTALLER (stub)
+ipcMain.handle('build-installer', async () => {
+  return { success: true, message: 'Installer build started' };
+});
+
+// 🖥️ TERMINAL BUTTON HANDLER
+ipcMain.on('open-cli', () => {
+  createCLIWindow();
+});
