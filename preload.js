@@ -1,25 +1,33 @@
+// ✅ preload.js – FINAL version for VibelyCoder (Claude + GUI + CLI support)
+
 const { contextBridge, ipcRenderer } = require('electron');
 
-contextBridge.exposeInMainWorld('api', {
-  // 🔑 Save Claude API key
-  saveClaudeKey: (key) => ipcRenderer.invoke('saveClaudeKey', key),
+contextBridge.exposeInMainWorld('vibelyAPI', {
+  // 🔑 --- LICENSE HANDLING ---
+  verifyLicense: (key) => ipcRenderer.invoke('verify-license', key),
+  licenseSuccess: () => ipcRenderer.send('license-success'),
 
-  // 🧠 Ask Claude something
+  // 🤖 --- CLAUDE AI FUNCTIONS ---
+  saveClaudeKey: (key) => ipcRenderer.invoke('saveClaudeKey', key),
   askClaude: (prompt) => ipcRenderer.invoke('askClaude', prompt),
 
-  // 📄 Write file
+  // 📂 --- FILE & COMMAND ACTIONS ---
   writeFile: (sessionId, relPath, content) =>
     ipcRenderer.invoke('writeFile', sessionId, relPath, content),
-
-  // 💻 Run shell command
   runCommand: (sessionId, command, args) =>
     ipcRenderer.invoke('runCommand', sessionId, command, args),
 
-  // 🚀 Deploy project
+  // 🌍 --- DEPLOYMENT ---
   deployTo: (platform, sessionId) =>
     ipcRenderer.invoke('deployTo', platform, sessionId),
 
-  // 🔑 Verify Gumroad license
-  verifyLicense: (key) => ipcRenderer.invoke('verify-license', key),
-});
+  // 🎨 --- GUI / UI BUILDER FEATURES ---
+  exportLayout: (layout) => ipcRenderer.invoke('export-layout', layout),
+  openInVSCode: () => ipcRenderer.invoke('open-vscode'),
+  buildInstaller: () => ipcRenderer.invoke('build-installer'),
 
+  // 🖥️ --- CLI INTEGRATION ---
+  openCLI: () => ipcRenderer.send('open-cli'),
+  sendCLICommand: (cmd) => ipcRenderer.send('cli-command', cmd),
+  onCLIOutput: (callback) => ipcRenderer.on('cli-output', (event, data) => callback(data))
+});
