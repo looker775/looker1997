@@ -6,63 +6,82 @@
   <style>
     body {
       font-family: Arial, sans-serif;
-      background-color: #f5f7fa;
+      background-color: #f0f2f5;
       margin: 0;
       display: flex;
       flex-direction: column;
       align-items: center;
       justify-content: center;
       height: 100vh;
+      color: #222;
     }
-    h1 { color: #333; }
+    h1 {
+      color: #2c3e50;
+      margin-bottom: 20px;
+    }
     input {
-      padding: 10px;
+      padding: 12px;
       width: 300px;
       margin-bottom: 15px;
       font-size: 16px;
+      border-radius: 5px;
+      border: 1px solid #ccc;
+      outline: none;
     }
     button {
       background-color: #4CAF50;
       color: white;
-      padding: 10px 20px;
+      padding: 12px 20px;
       border: none;
       cursor: pointer;
       font-size: 16px;
       border-radius: 5px;
+      transition: background-color 0.2s ease;
+    }
+    button:hover {
+      background-color: #45a049;
     }
     #status {
       margin-top: 15px;
-      font-size: 14px;
-      color: red;
+      font-size: 15px;
+      font-weight: bold;
+      color: #cc0000;
     }
   </style>
 </head>
 <body>
   <h1>Activate VibelyCoder</h1>
-  <input type="text" id="licenseKey" placeholder="Enter your Gumroad license key">
+  <input type="text" id="licenseKey" placeholder="Enter your license key">
   <button onclick="activate()">Activate</button>
   <div id="status"></div>
 
   <script>
-    const { ipcRenderer } = require('electron');
-
+    // ✅ Uses vibelyAPI from preload.js
     async function activate() {
-      const key = document.getElementById('licenseKey').value;
-      document.getElementById('status').innerText = "Checking license...";
+      const key = document.getElementById('licenseKey').value.trim();
+      const status = document.getElementById('status');
+      status.style.color = "#444";
+      status.innerText = "⏳ Checking license…";
 
-      const response = await ipcRenderer.invoke('check-license', key);
+      try {
+        const response = await window.vibelyAPI.verifyLicense(key);
 
-      if (response.success) {
-        document.getElementById('status').style.color = "green";
-        document.getElementById('status').innerText = "✅ License valid! Opening app...";
-        setTimeout(() => {
-          ipcRenderer.send('license-success'); // tell main process to open main app
-        }, 1000);
-      } else {
-        document.getElementById('status').style.color = "red";
-        document.getElementById('status').innerText = "❌ " + response.message;
+        if (response.success) {
+          status.style.color = "green";
+          status.innerText = "✅ License valid! Launching VibelyCoder…";
+          setTimeout(() => {
+            window.vibelyAPI.licenseSuccess(); // tells main.js to open index.html
+          }, 1000);
+        } else {
+          status.style.color = "red";
+          status.innerText = "❌ " + response.message;
+        }
+      } catch (err) {
+        status.style.color = "red";
+        status.innerText = "⚠️ Error: " + err.message;
       }
     }
   </script>
 </body>
 </html>
+
